@@ -39,7 +39,7 @@ const AuthApp = () => {
       const endpoint = isLogin ? '/api/login' : '/api/signup';
       const payload = isLogin
         ? { email: formData.email, password: formData.password }
-        : formData;
+        : { ...formData, role: 'user' }; // ✅ Added role for signup
 
       const response = await fetch(`http://localhost:5000${endpoint}`, {
         method: 'POST',
