@@ -9,10 +9,11 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-// MongoDB Connection
+// MongoDB connection
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true
@@ -23,42 +24,22 @@ mongoose.connect(process.env.MONGO_URI, {
   process.exit(1);
 });
 
-// Mongoose User Schema
+// Mongoose schema and model
 const userSchema = new mongoose.Schema({
   username: { type: String, unique: true, required: true },
-  email: { type: String, unique: true, required: true },
+  email:    { type: String, unique: true, required: true },
   password: { type: String, required: true },
-  role: { type: String, enum: ['admin', 'user'], default: 'user' },
+  role:     { type: String, enum: ['admin', 'user'], default: 'user' },
   created_at: { type: Date, default: Date.now }
 });
 
 const User = mongoose.model('User', userSchema);
 
-// JWT Middleware
-const authenticateToken = (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'Token required' });
+// --- Routes ---
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ error: 'Invalid or expired token' });
-    req.user = user;
-    next();
-  });
-};
-
-// Role-based Middleware
-const authorizeRole = (role) => {
-  return (req, res, next) => {
-    if (req.user.role !== role) {
-      return res.status(403).json({ error: 'Access denied' });
-    }
-    next();
-  };
-};
-
-// ✅ GET /api/signup - For browser testing only
+// Test GET route
 app.get('/api/signup', (req, res) => {
-  res.send('🟡 This is the signup endpoint. Use POST method to register a new user.');
+  res.send('🟢 Signup endpoint. Use POST /api/signup to register.');
 });
 
 // ✅ POST /api/signup
@@ -78,7 +59,13 @@ app.post('/api/signup', async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = await User.create({ username, email, password: hashedPassword, role: userRole });
+
+    const newUser = await User.create({
+      username,
+      email,
+      password: hashedPassword,
+      role: userRole
+    });
 
     const token = jwt.sign(
       { id: newUser._id, username, email, role: newUser.role },
@@ -93,14 +80,49 @@ app.post('/api/signup', async (req, res) => {
     });
 
   } catch (err) {
-    console.error(err);
+    console.error('Signup error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// Other routes (login, profile, dashboard, etc.) remain the same...
+// ✅ POST /api/login
+app.post('/api/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid credentials' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ error: 'Invalid credentials' });
+    }
+
+    const token = jwt.sign(
+      { id: user._id, username: user.username, email: user.email, role: user.role },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.status(200).json({
+      message: 'Login successful',
+      token,
+      user: { id: user._id, username: user.username, email: user.email, role: user.role }
+    });
+
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`🚀 Server running at http://localhost:${PORT}`);
 });
